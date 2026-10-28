@@ -276,7 +276,13 @@ def validate(root: Path, require_integrity: bool) -> tuple[list[str], list[str]]
         if isinstance(refs, list):
             for ref in refs:
                 if not (decision_root / str(ref)).is_file():
-                    errors.append(f"{path}: missing reference {ref}")
+                    if str(ref).startswith(("http://", "https://")):
+                        errors.append(
+                            f"{path}: external reference {ref} is not valid in refs; "
+                            "record URLs in source or a local ref file"
+                        )
+                    else:
+                        errors.append(f"{path}: missing reference {ref}")
 
     graph = {
         decision_id: [item for item in record.fields.get("supersedes", []) if item in by_id]

@@ -2,7 +2,7 @@
 
 An installable agent skill for preserving project decisions as timestamped, traceable, append-only Markdown history.
 
-Current release: `v0.1.5`
+Current release: `v0.1.6`
 
 Decision History helps AI agents and teams understand why a project reached its current state and use that context before taking consequential steps.
 
@@ -55,7 +55,7 @@ The default mode uses one file per month. Date-level files are available when a 
 
 New decisions are inserted at the top of the selected month or date file. Existing decision blocks are never edited, reordered, or deleted. A changed decision is represented by a new block using `supersedes`.
 
-New decision blocks use Markdown-only metadata. The `### Decision` section is required and must state exactly what was decided. References are optional and should only be added when supporting evidence or detailed context is needed.
+New decision blocks use Markdown-only metadata. The `### Decision` section is required and must state exactly what was decided. References are optional and should only be added when supporting evidence or detailed context is needed. `--ref` accepts existing local files relative to `.knowledges/decisions/`; external URLs belong in `--source` or a local `ref/` document.
 
 Detailed evidence, transcripts, diagrams, or research notes can be stored as separate files under `ref/` and linked from the decision block.
 
@@ -109,6 +109,8 @@ python3 skills/decision-history/scripts/validate_decisions.py \
   --root . \
   --require-integrity
 ```
+
+Validation errors are report-only diagnostics. Do not delete or rewrite the decision that caused an error; preserve it and append a correction with `supersedes` if needed.
 
 The validator checks:
 

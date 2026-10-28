@@ -71,9 +71,54 @@ class DecisionHistoryTests(unittest.TestCase):
         self.assertIn("MUST NOT delete", safety_text)
         self.assertIn("git rm", safety_text)
         self.assertIn("canonical source of truth", safety_text)
+        self.assertIn("validation failures as reportable diagnostics", safety_text)
+        self.assertIn("external URLs belong in `--source`", safety_text)
         for text in (skill_text, safety_text):
             self.assertIn("append-only", text)
             self.assertIn("supersedes", text)
+
+    def test_external_source_url_is_valid_but_external_ref_is_rejected_clearly(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rejected = run_script(
+                RECORD,
+                "--root",
+                str(root),
+                "--timestamp",
+                "2026-10-28T13:00:00+07:00",
+                "--title",
+                "Reject external reference input",
+                "--decision",
+                "Do not write an external URL as a local reference.",
+                "--ref",
+                "https://github.com/example/project",
+                check=False,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("use --source or a local ref file", rejected.stderr)
+            self.assertFalse((root / ".knowledges" / "decisions" / "2026-10.md").exists())
+
+            record(
+                root,
+                "2026-10-28T14:00:00+07:00",
+                "Use the external project source",
+                "Use the external project source as context.",
+                "--source",
+                "https://github.com/example/project",
+            )
+            valid = run_script(VALIDATE, "--root", str(root), "--require-integrity")
+            self.assertIn("validation passed", valid.stdout)
+
+            period_file = root / ".knowledges" / "decisions" / "2026-10.md"
+            content = period_file.read_text(encoding="utf-8").replace(
+                "- References: none",
+                "- References: `https://github.com/example/project`",
+            )
+            period_file.write_text(content, encoding="utf-8")
+            invalid = run_script(VALIDATE, "--root", str(root), "--require-integrity", check=False)
+            self.assertNotEqual(invalid.returncode, 0)
+            self.assertIn("external reference", invalid.stderr)
+            self.assertIn("record URLs in source or a local ref file", invalid.stderr)
 
     def test_companion_tool_policy_is_explicit(self) -> None:
         skill_text = SKILL.read_text(encoding="utf-8")

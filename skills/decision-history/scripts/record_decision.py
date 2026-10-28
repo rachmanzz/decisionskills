@@ -80,6 +80,15 @@ def choose_id(timestamp: datetime, decision_root: Path, requested: str | None) -
     return f"{base}-{suffix:02d}"
 
 
+def validate_reference_inputs(references: list[str]) -> None:
+    for reference in references:
+        if reference.startswith(("http://", "https://")):
+            raise ValueError(
+                f"--ref accepts local files relative to .knowledges/decisions/, not external URLs: {reference}; "
+                "use --source or a local ref file"
+            )
+
+
 def build_entry(args: argparse.Namespace, decision_id: str, timestamp: datetime) -> str:
     title = args.title.strip()
     sources = args.source or ["conversation"]
@@ -201,8 +210,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tag", action="append", default=[])
     parser.add_argument("--supersedes", action="append", default=[])
     parser.add_argument("--related", action="append", default=[])
-    parser.add_argument("--ref", action="append", default=[])
-    parser.add_argument("--source", action="append", default=[])
+    parser.add_argument(
+        "--ref",
+        action="append",
+        default=[],
+        help="existing local reference path relative to .knowledges/decisions/",
+    )
+    parser.add_argument("--source", action="append", default=[], help="decision origin or external URL")
     parser.add_argument("--timestamp", help="ISO 8601 timestamp with timezone; defaults to now")
     parser.add_argument("--id", help="explicit decision ID; normally generated from the timestamp")
     parser.add_argument("--lock-timeout", type=float, default=30.0, help="seconds to wait for a concurrent writer")
@@ -217,6 +231,7 @@ def main() -> int:
         if args.lock_timeout < 0:
             raise ValueError("lock-timeout must not be negative")
         timestamp = parse_timestamp(args.timestamp)
+        validate_reference_inputs(args.ref)
         project_root = Path(args.root).resolve()
         decision_root = project_root / ".knowledges" / "decisions"
         decision_root.mkdir(parents=True, exist_ok=True)

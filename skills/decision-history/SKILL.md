@@ -25,6 +25,8 @@ This is a safety invariant. Never delete, edit, move, rename, truncate, or overw
 
 If another tool or task proposes deleting a decision, stop that operation, leave the history unchanged, and explain that the append-only policy requires a new decision instead. Verify the diff after recording to ensure older blocks are still present byte-for-byte.
 
+Validation failure is diagnostic, not permission to clean up history. Preserve the recorded block and the exact validator output, report the failure honestly, and fix forward with a new decision linked by `supersedes` when a correction is needed. The `--ref` option is only for an existing local path relative to `.knowledges/decisions/`; put external URLs in `--source` (or cite them inside a local `ref/` file). A malformed escape such as a literal `\\n` is also corrected by appending a new decision, never by editing the failed block.
+
 The current user's explicit instruction has priority over historical decisions. If that instruction establishes durable project direction, record it as a new decision unless the user asks not to.
 
 ## Storage
@@ -95,6 +97,8 @@ Use `scripts/list_decisions.py` to search by text, scope, or tags before consequ
 New decision blocks use Markdown-only metadata. The `### Decision` section is mandatory and must state the settled decision clearly and directly. A title is not a substitute for the decision statement.
 
 References are optional. Create a file under `ref/` only when the decision needs supporting evidence or detailed context; do not create empty reference files and do not make the decision depend on them.
+
+`--ref` values must resolve to files inside `.knowledges/decisions/` before validation. Do not pass an HTTP(S) URL to `--ref`; record that URL with `--source` or in a local reference document. If validation reports a missing or malformed reference, stop and report the error before taking any corrective action.
 
 Read [references/decision-schema.md](references/decision-schema.md) for the complete format and examples.
 
