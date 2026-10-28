@@ -13,23 +13,25 @@ Use this skill to preserve project decisions as durable context for humans and A
 
 Decision history is append-only:
 
-- Never edit an existing decision file.
-- Never delete a decision file.
+- Never edit or delete an existing decision block.
+- Add each new decision at the top of the existing period file.
+- The period file may change only by receiving a new block before its previous first block.
+- Never rewrite, reorder, or remove older decision blocks in that file.
 - When a decision changes, create a new decision and link it with `supersedes`.
 - When a decision contains an error, record a correction as a new decision instead of rewriting the old record.
-- Treat supporting reference files as historical snapshots. Add a new reference or decision when the supporting context changes.
+- Keep detailed reference documents in `ref/` as separate historical files.
 
 The current user's explicit instruction has priority over historical decisions. If that instruction establishes durable project direction, record it as a new decision unless the user asks not to.
 
 ## Storage
 
-Use the project root's `.knowledges/decisions/` directory. The recommended layout is one decision per file, grouped by month:
+Use the project root's `.knowledges/decisions/` directory. The recommended layout is one period file containing multiple decision blocks, with the newest block at the top:
 
 ```text
 .knowledges/
 └── decisions/
-    ├── YYYY-MM/
-    │   └── DEC-YYYYMMDD-HHMMSS[-NN].md
+    ├── YYYY-MM.md
+    │   # or YYYY-MM-DD.md when date-level files are preferred
     └── ref/
         └── DEC-*.md
 ```
@@ -64,7 +66,7 @@ Each decision must have:
 - scope, tags, and source information when useful;
 - links to superseded or related decisions when applicable.
 
-Use the provided `scripts/record_decision.py` helper when available. It creates a new file without overwriting an existing file. Run `scripts/validate_decisions.py` after adding or importing records.
+Use the provided `scripts/record_decision.py` helper when available. It prepends a new decision block to the selected month or date file without changing existing blocks. Run `scripts/validate_decisions.py` after adding or importing records.
 
 Read [references/decision-schema.md](references/decision-schema.md) for the complete format and examples.
 

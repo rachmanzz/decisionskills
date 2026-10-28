@@ -1,27 +1,31 @@
 # Decision schema
 
-Each decision is a Markdown file with YAML frontmatter followed by human-readable sections. The frontmatter is deliberately small so that agents can search it cheaply.
+Each period file is a Markdown file containing multiple decision blocks. Every block has a small YAML metadata fence followed by human-readable sections so agents can search it cheaply.
 
 ## File location
 
-Store the file at:
+Store the period file at:
 
 ```text
-.knowledges/decisions/YYYY-MM/DEC-YYYYMMDD-HHMMSS[-NN].md
+.knowledges/decisions/YYYY-MM.md
+# or .knowledges/decisions/YYYY-MM-DD.md
 ```
 
-Use a numeric suffix when more than one decision is created in the same second. Reference documents belong in:
+Use a numeric suffix in the decision ID when more than one decision is created in the same second. Reference documents belong in:
 
 ```text
 .knowledges/decisions/ref/
 ```
 
-Paths in `refs` are relative to `.knowledges/decisions/`.
+Paths in `refs` are relative to `.knowledges/decisions/`. New decisions must be inserted before the previous first decision block. Existing blocks must remain byte-for-byte unchanged.
 
-## Frontmatter
+## Decision block
+
+````markdown
+<!-- decision:start -->
+## Store project decisions in Markdown
 
 ```yaml
----
 id: DEC-20261028-153000
 title: Store project decisions in Markdown
 decided_at: 2026-10-28T15:30:00+07:00
@@ -35,8 +39,19 @@ refs:
   - ref/DEC-20261028-153000.md
 source:
   - conversation
----
+integrity_sha256: "..."
 ```
+
+### Decision
+
+Project decisions are stored in `.knowledges/decisions/` as Markdown files.
+
+### Rationale
+
+Markdown is readable by humans, AI agents, Git, and different coding tools.
+
+<!-- decision:end -->
+````
 
 Required fields:
 
@@ -56,43 +71,41 @@ Recommended fields:
 
 Do not add a mutable `status` field. A decision is considered superseded when a newer decision lists its ID in `supersedes`; the old file remains unchanged.
 
-## Body
+## Body sections
 
-Use these sections when applicable:
+Use these sections inside each decision block when applicable:
 
 ```markdown
-# Store project decisions in Markdown
-
-## Decision
+### Decision
 
 Project decisions are stored in `.knowledges/decisions/` as Markdown files.
 
-## Rationale
+### Rationale
 
 Markdown is readable by humans, AI agents, Git, and different coding tools.
 
-## Consequences
+### Consequences
 
 - Decisions can be searched with normal text search.
 - Decisions are tracked by version control.
 - Decisions do not depend on an external database.
 
-## Agent action
+### Agent action
 
 Before making architectural or workflow changes, the AI must check relevant decisions.
 ```
 
-Keep the decision file concise. Put long evidence, transcripts, diagrams, or research notes in a reference file named after the decision ID. A correction or new interpretation must be represented by a new record rather than silently changing an old reference.
+Keep each decision block concise. Put long evidence, transcripts, diagrams, or research notes in a separate reference file named after the decision ID. A correction or new interpretation must be represented by a new record rather than silently changing an old reference.
 
 ## Supersession example
 
-The original decision remains unchanged:
+The original decision block remains unchanged in its period file:
 
 ```text
-.knowledges/decisions/2026-10/DEC-20261028-153000.md
+.knowledges/decisions/2026-10.md
 ```
 
-A later decision records the change:
+A later decision is inserted at the top of the same file and records the change:
 
 ```yaml
 id: DEC-20261029-101500

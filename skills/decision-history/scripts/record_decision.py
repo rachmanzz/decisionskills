@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a new timestamped decision without overwriting an existing record."""
+"""Prepend a new decision block to a month or date history file."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from pathlib import Path
 
 
 ID_PATTERN = re.compile(r"^DEC-\d{8}-\d{6}(?:-\d{2})?$")
+ID_SCAN_PATTERN = re.compile(r"^\s*id:\s*[\"']?(DEC-\d{8}-\d{6}(?:-\d{2})?)[\"']?\s*$", re.MULTILINE)
+START_MARKER = "<!-- decision:start -->"
 
 
 def yaml_string(value: str) -> str:
@@ -42,10 +44,7 @@ def existing_ids(decision_root: Path) -> set[str]:
     for path in decision_root.rglob("*.md"):
         if "ref" in path.relative_to(decision_root).parts:
             continue
-        for line in path.read_text(encoding="utf-8").splitlines()[:24]:
-            if line.startswith("id:"):
-                ids.add(line.split(":", 1)[1].strip().strip('"\''))
-                break
+        ids.update(ID_SCAN_PATTERN.findall(path.read_text(encoding="utf-8")))
     return ids
 
 
@@ -67,26 +66,11 @@ def choose_id(timestamp: datetime, decision_root: Path, requested: str | None) -
     return f"{base}-{suffix:02d}"
 
 
-def markdown_body(args: argparse.Namespace, title: str) -> str:
-    lines = [f"# {title}", "", "## Decision", "", args.decision.strip(), ""]
-    if args.rationale:
-        lines += ["## Rationale", "", args.rationale.strip(), ""]
-    if args.consequence:
-        lines += ["## Consequences", ""]
-        lines += [f"- {item.strip()}" for item in args.consequence]
-        lines.append("")
-    if args.agent_action:
-        lines += ["## Agent action", "", args.agent_action.strip(), ""]
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def build_document(args: argparse.Namespace, decision_id: str, timestamp: datetime) -> str:
+def build_entry(args: argparse.Namespace, decision_id: str, timestamp: datetime) -> str:
     title = args.title.strip()
     sources = args.source or ["conversation"]
-    body = markdown_body(args, title)
-    frontmatter = "\n".join(
+    metadata = "\n".join(
         [
-            "---",
             f"id: {yaml_string(decision_id)}",
             f"title: {yaml_string(title)}",
             f"decided_at: {yaml_string(timestamp.isoformat())}",
@@ -97,18 +81,54 @@ def build_document(args: argparse.Namespace, decision_id: str, timestamp: dateti
             f"refs: {yaml_array(args.ref)}",
             f"source: {yaml_array(sources)}",
             'integrity_sha256: ""',
-            "---",
-            "",
         ]
     )
-    document = frontmatter + body
-    digest = hashlib.sha256(document.encode("utf-8")).hexdigest()
-    return document.replace('integrity_sha256: ""', f'integrity_sha256: "{digest}"', 1)
+    lines = [
+        "<!-- decision:start -->",
+        f"## {title}",
+        "",
+        "```yaml",
+        metadata,
+        "```",
+        "",
+        "### Decision",
+        "",
+        args.decision.strip(),
+        "",
+    ]
+    if args.rationale:
+        lines += ["### Rationale", "", args.rationale.strip(), ""]
+    if args.consequence:
+        lines += ["### Consequences", ""]
+        lines += [f"- {item.strip()}" for item in args.consequence]
+        lines.append("")
+    if args.agent_action:
+        lines += ["### Agent action", "", args.agent_action.strip(), ""]
+    lines += ["<!-- decision:end -->", ""]
+    entry = "\n".join(lines)
+    digest = hashlib.sha256(entry.encode("utf-8")).hexdigest()
+    return entry.replace('integrity_sha256: ""', f'integrity_sha256: "{digest}"', 1)
+
+
+def prepend_entry(path: Path, entry: str) -> None:
+    if not path.exists():
+        with path.open("x", encoding="utf-8") as output:
+            output.write(entry)
+        return
+
+    existing = path.read_text(encoding="utf-8")
+    if existing.strip() and START_MARKER not in existing:
+        raise ValueError(
+            f"period file exists in legacy format: {path}; preserve it and choose a new period file or migrate it manually"
+        )
+    combined = entry + ("\n" + existing.lstrip("\n") if existing.strip() else "")
+    path.write_text(combined, encoding="utf-8")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".", help="project root; defaults to the current directory")
+    parser.add_argument("--period", choices=("month", "date"), default="month")
     parser.add_argument("--title", required=True)
     parser.add_argument("--decision", required=True)
     parser.add_argument("--rationale")
@@ -132,17 +152,15 @@ def main() -> int:
         project_root = Path(args.root).resolve()
         decision_root = project_root / ".knowledges" / "decisions"
         decision_id = choose_id(timestamp, decision_root, args.id)
-        month_dir = decision_root / timestamp.strftime("%Y-%m")
-        month_dir.mkdir(parents=True, exist_ok=True)
-        path = month_dir / f"{decision_id}.md"
-        document = build_document(args, decision_id, timestamp)
-        with path.open("x", encoding="utf-8") as output:
-            output.write(document)
+        decision_root.mkdir(parents=True, exist_ok=True)
+        filename = timestamp.strftime("%Y-%m.md" if args.period == "month" else "%Y-%m-%d.md")
+        path = decision_root / filename
+        prepend_entry(path, build_entry(args, decision_id, timestamp))
     except (ValueError, FileExistsError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    print(f"created {path}")
+    print(f"prepended {path}")
     print(f"id: {decision_id}")
     return 0
 

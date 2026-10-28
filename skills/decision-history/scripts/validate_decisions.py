@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the structure and links of append-only decision records."""
+"""Validate month/date decision files and their append-only decision blocks."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,17 @@ from typing import Any
 
 ID_PATTERN = re.compile(r"^DEC-\d{8}-\d{6}(?:-\d{2})?$")
 HASH_PATTERN = re.compile(r"^integrity_sha256:\s*.*$", re.MULTILINE)
+START_MARKER = "<!-- decision:start -->"
+END_MARKER = "<!-- decision:end -->"
+YAML_FENCE = re.compile(r"```yaml\r?\n(.*?)\r?\n```", re.DOTALL)
+
+
+@dataclass
+class Record:
+    path: Path
+    fields: dict[str, Any]
+    raw: str
+    period_block: bool
 
 
 def scalar(value: str) -> Any:
@@ -34,16 +46,15 @@ def scalar(value: str) -> Any:
     return value
 
 
-def parse_frontmatter(path: Path) -> tuple[dict[str, Any], str, list[str]]:
-    text = path.read_text(encoding="utf-8")
+def parse_metadata(text: str) -> tuple[dict[str, Any], list[str]]:
     lines = text.splitlines()
     errors: list[str] = []
     if not lines or lines[0].strip() != "---":
-        return {}, text, ["missing opening frontmatter delimiter"]
+        return {}, ["missing opening metadata delimiter"]
     try:
         end = lines.index("---", 1)
     except ValueError:
-        return {}, text, ["missing closing frontmatter delimiter"]
+        return {}, ["missing closing metadata delimiter"]
 
     fields: dict[str, Any] = {}
     current_list: str | None = None
@@ -51,12 +62,11 @@ def parse_frontmatter(path: Path) -> tuple[dict[str, Any], str, list[str]]:
         if not line.strip():
             continue
         if line.lstrip().startswith("-") and current_list:
-            item = line.lstrip()[1:].strip()
-            fields[current_list].append(scalar(item))
+            fields[current_list].append(scalar(line.lstrip()[1:].strip()))
             continue
         match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*):(?:\s*(.*))?$", line)
         if not match:
-            errors.append(f"invalid frontmatter line: {line}")
+            errors.append(f"invalid metadata line: {line}")
             current_list = None
             continue
         key, raw_value = match.groups()
@@ -66,10 +76,52 @@ def parse_frontmatter(path: Path) -> tuple[dict[str, Any], str, list[str]]:
         else:
             fields[key] = scalar(raw_value)
             current_list = key if isinstance(fields[key], list) else None
-    body = "\n".join(lines[end + 1:])
-    if text.endswith("\n"):
-        body += "\n"
-    return fields, text, errors
+    return fields, errors
+
+
+def parse_period_block(block: str) -> tuple[dict[str, Any], list[str]]:
+    match = YAML_FENCE.search(block)
+    if not match:
+        return {}, ["missing yaml metadata fence"]
+    metadata, errors = parse_metadata(f"---\n{match.group(1)}\n---\n")
+    return metadata, errors
+
+
+def extract_records(path: Path) -> tuple[list[Record], list[str], list[str]]:
+    text = path.read_text(encoding="utf-8")
+    records: list[Record] = []
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if START_MARKER not in text:
+        metadata, parse_errors = parse_metadata(text)
+        errors.extend(f"{path}: {problem}" for problem in parse_errors)
+        if not parse_errors:
+            records.append(Record(path, metadata, text, False))
+            warnings.append(f"{path}: legacy single-decision format; future records should use period blocks")
+        return records, errors, warnings
+
+    cursor = 0
+    while True:
+        start = text.find(START_MARKER, cursor)
+        if start < 0:
+            break
+        end = text.find(END_MARKER, start + len(START_MARKER))
+        if end < 0:
+            errors.append(f"{path}: decision block has no closing marker")
+            break
+        block_end = end + len(END_MARKER)
+        if text.startswith("\n", block_end):
+            block_end += 1
+        block = text[start:block_end]
+        metadata, parse_errors = parse_period_block(block)
+        errors.extend(f"{path}: {problem}" for problem in parse_errors)
+        if not parse_errors:
+            records.append(Record(path, metadata, block, True))
+        cursor = block_end
+    if not records and not errors:
+        errors.append(f"{path}: no decision blocks found")
+    return records, errors, warnings
 
 
 def decision_files(decision_root: Path) -> list[Path]:
@@ -88,23 +140,29 @@ def integrity_material(text: str) -> str:
 
 def validate(root: Path, require_integrity: bool) -> tuple[list[str], list[str]]:
     decision_root = root / ".knowledges" / "decisions"
-    files = decision_files(decision_root)
     errors: list[str] = []
     warnings: list[str] = []
-    records: dict[str, tuple[Path, dict[str, Any]]] = {}
+    records: list[Record] = []
+    records_by_file: dict[Path, list[Record]] = {}
 
-    for path in files:
-        fields, text, parse_errors = parse_frontmatter(path)
-        for problem in parse_errors:
-            errors.append(f"{path}: {problem}")
+    for path in decision_files(decision_root):
+        found, file_errors, file_warnings = extract_records(path)
+        records.extend(found)
+        records_by_file[path] = found
+        errors.extend(file_errors)
+        warnings.extend(file_warnings)
 
+    by_id: dict[str, Record] = {}
+    for record in records:
+        path = record.path
+        fields = record.fields
         decision_id = fields.get("id")
         if not isinstance(decision_id, str) or not ID_PATTERN.fullmatch(decision_id):
             errors.append(f"{path}: invalid or missing id")
-        elif decision_id in records:
-            errors.append(f"{path}: duplicate id {decision_id} (also in {records[decision_id][0]})")
+        elif decision_id in by_id:
+            errors.append(f"{path}: duplicate id {decision_id} (also in {by_id[decision_id].path})")
         else:
-            records[decision_id] = (path, fields)
+            by_id[decision_id] = record
 
         for required in ("title", "decided_at"):
             if not fields.get(required):
@@ -118,49 +176,56 @@ def validate(root: Path, require_integrity: bool) -> tuple[list[str], list[str]]
             except ValueError:
                 errors.append(f"{path}: decided_at is not valid ISO 8601: {timestamp}")
 
-        if path.stem != decision_id:
-            errors.append(f"{path}: filename must match its id ({decision_id}.md)")
-
         digest = fields.get("integrity_sha256")
         if digest:
-            expected = hashlib.sha256(integrity_material(text).encode("utf-8")).hexdigest()
+            expected = hashlib.sha256(integrity_material(record.raw).encode("utf-8")).hexdigest()
             if digest != expected:
-                errors.append(f"{path}: integrity_sha256 does not match file contents")
+                errors.append(f"{path}: integrity_sha256 does not match the decision block")
         elif require_integrity:
             errors.append(f"{path}: missing integrity_sha256")
         else:
-            warnings.append(f"{path}: no integrity_sha256; structural validation only")
+            warnings.append(f"{path}: decision {decision_id} has no integrity_sha256")
 
-    for decision_id, (path, fields) in records.items():
         for field in ("supersedes", "related", "refs", "source"):
             value = fields.get(field, [])
             if not isinstance(value, list):
                 errors.append(f"{path}: {field} must be a list")
 
+    for path, file_records in records_by_file.items():
+        timestamps: list[datetime] = []
+        for record in file_records:
+            try:
+                timestamps.append(datetime.fromisoformat(str(record.fields["decided_at"])))
+            except (KeyError, TypeError, ValueError):
+                continue
+        if any(newer < older for newer, older in zip(timestamps, timestamps[1:])):
+            errors.append(f"{path}: decision blocks are not newest-first")
+
+    for record in records:
+        path = record.path
+        fields = record.fields
         for field in ("supersedes", "related"):
             values = fields.get(field, [])
             if isinstance(values, list):
                 for related_id in values:
-                    if related_id not in records:
+                    if related_id not in by_id:
                         errors.append(f"{path}: {field} references unknown decision {related_id}")
         refs = fields.get("refs", [])
         if isinstance(refs, list):
             for ref in refs:
-                ref_path = decision_root / str(ref)
-                if not ref_path.is_file():
+                if not (decision_root / str(ref)).is_file():
                     errors.append(f"{path}: missing reference {ref}")
 
     graph = {
-        decision_id: [item for item in fields.get("supersedes", []) if item in records]
-        for decision_id, (_, fields) in records.items()
+        decision_id: [item for item in record.fields.get("supersedes", []) if item in by_id]
+        for decision_id, record in by_id.items()
     }
     visiting: set[str] = set()
     visited: set[str] = set()
 
     def visit(node: str, trail: list[str]) -> None:
         if node in visiting:
-            cycle = " -> ".join(trail + [node])
-            errors.append(f"supersedes cycle detected: {cycle}")
+            errors.append(f"supersedes cycle detected: {' -> '.join(trail + [node])}")
             return
         if node in visited:
             return
