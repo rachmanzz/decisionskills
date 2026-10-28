@@ -69,6 +69,8 @@ Each decision must have:
 
 Use the provided `scripts/record_decision.py` helper when available. It prepends a new decision block to the selected month or date file without changing existing blocks. Run `scripts/validate_decisions.py` after adding or importing records.
 
+Use `scripts/list_decisions.py` to search by text, scope, or tags before consequential work. It hides superseded decisions by default; use `--include-superseded` when reconstructing history. Use `scripts/migrate_decisions.py` to report older YAML records or create an explicitly requested review draft. Migration never rewrites source history automatically.
+
 New decision blocks use Markdown-only metadata. The `### Decision` section is mandatory and must state the settled decision clearly and directly. A title is not a substitute for the decision statement.
 
 References are optional. Create a file under `ref/` only when the decision needs supporting evidence or detailed context; do not create empty reference files and do not make the decision depend on them.
@@ -78,3 +80,5 @@ Read [references/decision-schema.md](references/decision-schema.md) for the comp
 ## Reporting decisions
 
 When a decision influenced the work, mention its ID in the response or implementation notes. When creating a replacement decision, state which earlier decision it supersedes. Preserve the full history so a future agent can reconstruct why the project reached its current state.
+
+The recorder serializes helper writers targeting the same history file on the current host and uses an atomic replacement after flushing the new file. This protects cooperating recorder processes from lost updates. It does not protect against manual editors or unrelated writers that bypass the recorder.

@@ -2,6 +2,8 @@
 
 An installable agent skill for preserving project decisions as timestamped, traceable, append-only Markdown history.
 
+Current release: `v0.1.1`
+
 Decision History helps AI agents and teams understand why a project reached its current state and use that context before taking consequential steps.
 
 ## Install
@@ -48,6 +50,8 @@ New decisions are inserted at the top of the selected month or date file. Existi
 New decision blocks use Markdown-only metadata. The `### Decision` section is required and must state exactly what was decided. References are optional and should only be added when supporting evidence or detailed context is needed.
 
 Detailed evidence, transcripts, diagrams, or research notes can be stored as separate files under `ref/` and linked from the decision block.
+
+The recorder serializes helper writers for the same history file on the current host and replaces the file atomically after flushing it. This protects concurrent recorder processes from lost updates. Manual editors and writers that do not use the recorder are outside this guarantee.
 
 ## Decision block example
 
@@ -107,6 +111,34 @@ The validator checks:
 - reference paths;
 - integrity hashes that detect edits to existing blocks.
 
+Search decisions before taking a consequential step:
+
+```bash
+python3 skills/decision-history/scripts/list_decisions.py \
+  --root . \
+  --scope database \
+  --query PostgreSQL
+```
+
+The search helper hides superseded decisions by default. Use `--include-superseded` for historical review or `--json` for automation.
+
+Inspect older YAML records without changing history:
+
+```bash
+python3 skills/decision-history/scripts/migrate_decisions.py --root .
+python3 skills/decision-history/scripts/migrate_decisions.py \
+  --root . \
+  --draft /tmp/decision-migration-review.md
+```
+
+Migration is report-only unless a review draft is explicitly requested. The draft must remain outside `.knowledges/decisions/`; existing history is never rewritten automatically.
+
+Run the automated test suite:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
 Validate the skill package itself with the `skill-creator` validator:
 
 ```bash
@@ -122,6 +154,8 @@ skills/decision-history/
 ├── agents/openai.yaml
 ├── references/decision-schema.md
 └── scripts/
+    ├── list_decisions.py
+    ├── migrate_decisions.py
     ├── record_decision.py
     └── validate_decisions.py
 ```
