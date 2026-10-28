@@ -73,6 +73,9 @@ class DecisionHistoryTests(unittest.TestCase):
         self.assertIn("canonical source of truth", safety_text)
         self.assertIn("validation failures as reportable diagnostics", safety_text)
         self.assertIn("external URLs belong in `--source`", safety_text)
+        self.assertIn("### Writing a reference file", skill_text)
+        self.assertIn("Create the reference file before recording the decision", skill_text)
+        self.assertIn("path relative to `.knowledges/decisions/`", skill_text)
         for text in (skill_text, safety_text):
             self.assertIn("append-only", text)
             self.assertIn("supersedes", text)

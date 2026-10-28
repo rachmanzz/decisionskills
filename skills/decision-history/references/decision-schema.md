@@ -99,6 +99,31 @@ Keep each decision block concise. Put long evidence, transcripts, diagrams, or r
 
 If validation fails because a reference is missing, points to an external URL, or contains malformed escaping, preserve the failed record and report the exact error. Correct the issue with a new decision using `supersedes`; never rewrite or delete the failed record.
 
+## Reference file format
+
+Reference files are optional Markdown files stored under `.knowledges/decisions/ref/`. Create them before recording a decision so the path can be validated. The `refs` field stores a path relative to `.knowledges/decisions/`, for example `ref/DEC-20261028-193804.md`.
+
+A reference file should be self-describing and normally include:
+
+```markdown
+# Reference for DEC-20261028-193804
+
+- Decision: `DEC-20261028-193804`
+- Type: External project context
+- Retrieved at: `2026-10-28T19:30:00+07:00`
+- URL: https://example.com/project
+
+## Context
+
+Why this source is relevant to the decision.
+
+## Evidence
+
+Relevant facts, observations, or concise excerpts.
+```
+
+Use `--source` for a simple external URL. Do not put the URL itself in `--ref`, and do not create an empty reference file. Existing reference files are immutable historical records; create a new file and link it from a new decision when the evidence changes.
+
 ## Supersession example
 
 The original decision block remains unchanged in its period file:

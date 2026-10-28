@@ -100,6 +100,45 @@ References are optional. Create a file under `ref/` only when the decision needs
 
 `--ref` values must resolve to files inside `.knowledges/decisions/` before validation. Do not pass an HTTP(S) URL to `--ref`; record that URL with `--source` or in a local reference document. If validation reports a missing or malformed reference, stop and report the error before taking any corrective action.
 
+### Writing a reference file
+
+Create the reference file before recording the decision. Use Markdown, keep it under `.knowledges/decisions/ref/`, and name it after the decision ID when possible:
+
+```text
+.knowledges/decisions/ref/DEC-YYYYMMDD-HHMMSS.md
+```
+
+The reference should identify the decision, source, retrieval time, and supporting context. A practical structure is:
+
+```markdown
+# Reference for DEC-20261028-193804
+
+- Decision: `DEC-20261028-193804`
+- Type: External project context
+- Retrieved at: `2026-10-28T19:30:00+07:00`
+- URL: https://example.com/project
+
+## Context
+
+Explain why this source supports the decision.
+
+## Evidence
+
+Summarize the relevant facts, observations, or excerpts without replacing the decision's direct statement.
+```
+
+Link the existing file from the decision with a path relative to `.knowledges/decisions/`:
+
+```bash
+python3 skills/decision-history/scripts/record_decision.py \
+  --root . \
+  --title "Example decision" \
+  --decision "Use the selected approach." \
+  --ref ref/DEC-20261028-193804.md
+```
+
+For a simple web source, use `--source https://example.com/project` instead of creating a reference file. Reference files are historical records too: do not edit or delete an existing one; create a new reference and a new decision with `supersedes` when the supporting information changes.
+
 Read [references/decision-schema.md](references/decision-schema.md) for the complete format and examples.
 
 ## Reporting decisions

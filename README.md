@@ -2,7 +2,7 @@
 
 An installable agent skill for preserving project decisions as timestamped, traceable, append-only Markdown history.
 
-Current release: `v0.1.6`
+Current release: `v0.1.7`
 
 Decision History helps AI agents and teams understand why a project reached its current state and use that context before taking consequential steps.
 
@@ -57,7 +57,28 @@ New decisions are inserted at the top of the selected month or date file. Existi
 
 New decision blocks use Markdown-only metadata. The `### Decision` section is required and must state exactly what was decided. References are optional and should only be added when supporting evidence or detailed context is needed. `--ref` accepts existing local files relative to `.knowledges/decisions/`; external URLs belong in `--source` or a local `ref/` document.
 
-Detailed evidence, transcripts, diagrams, or research notes can be stored as separate files under `ref/` and linked from the decision block.
+Detailed evidence, transcripts, diagrams, or research notes can be stored as separate Markdown files under `ref/` and linked from the decision block. Create the file first, then pass its path relative to `.knowledges/decisions/` with `--ref`. A reference should identify the decision, source, retrieval time, context, and evidence. Use `--source` for a simple external URL; do not put web URLs directly in `--ref`.
+
+Example reference file:
+
+```markdown
+# Reference for DEC-20261028-193804
+
+- Decision: `DEC-20261028-193804`
+- Type: External project context
+- Retrieved at: `2026-10-28T19:30:00+07:00`
+- URL: https://example.com/project
+
+## Context
+
+Why this source supports the decision.
+
+## Evidence
+
+Relevant facts and observations.
+```
+
+Reference files are historical records. Do not edit or delete an existing reference; create a new reference and decision with `supersedes` when the evidence changes.
 
 The recorder serializes helper writers for the same history file on the current host and replaces the file atomically after flushing it. This protects concurrent recorder processes from lost updates. Manual editors and writers that do not use the recorder are outside this guarantee.
 
