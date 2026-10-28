@@ -2,7 +2,7 @@
 
 An installable agent skill for preserving project decisions as timestamped, traceable, append-only Markdown history.
 
-Current release: `v0.1.2`
+Current release: `v0.1.3`
 
 Decision History helps AI agents and teams understand why a project reached its current state and use that context before taking consequential steps.
 
@@ -160,7 +160,9 @@ python3 /path/to/skill-creator/scripts/quick_validate.py \
 skills/decision-history/
 ├── SKILL.md
 ├── agents/openai.yaml
-├── references/decision-schema.md
+├── references/
+│   ├── companion-tools.md
+│   └── decision-schema.md
 └── scripts/
     ├── list_decisions.py
     ├── migrate_decisions.py
@@ -169,6 +171,16 @@ skills/decision-history/
 ```
 
 The installed skill provides the workflow. Each consuming project owns its own `.knowledges/decisions/` history.
+
+## Optional companion tools
+
+The core skill does not require external tools. When graph capabilities are useful, it recommends `decisiongraph/dg` first and `Semantica` second for advanced decision intelligence. `edgextract` is mentioned only for explicit free-form Markdown extraction needs.
+
+These are independent third-party projects, not parts, forks, wrappers, or bundled dependencies of this skill. They are never installed automatically. A user may install one manually, or explicitly ask an agent to install one. The agent must identify the official source and license before an explicit installation request.
+
+The selection or rejection of a companion tool is recorded as an append-only project decision. Once a tool is selected, the skill does not recommend another one. If companion tools are declined, it does not recommend them again unless the user explicitly asks.
+
+See [the companion tool reference](skills/decision-history/references/companion-tools.md) for recommendation boundaries and licenses.
 
 ## License
 

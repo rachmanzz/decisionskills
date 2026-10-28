@@ -15,6 +15,8 @@ RECORD = SCRIPTS / "record_decision.py"
 VALIDATE = SCRIPTS / "validate_decisions.py"
 LIST = SCRIPTS / "list_decisions.py"
 MIGRATE = SCRIPTS / "migrate_decisions.py"
+SKILL = PROJECT_ROOT / "skills" / "decision-history" / "SKILL.md"
+COMPANION_TOOLS = PROJECT_ROOT / "skills" / "decision-history" / "references" / "companion-tools.md"
 
 
 def run_script(script: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -51,6 +53,18 @@ def record(root: Path, timestamp: str, title: str, decision: str, *extra: str) -
 
 
 class DecisionHistoryTests(unittest.TestCase):
+    def test_companion_tool_policy_is_explicit(self) -> None:
+        skill_text = SKILL.read_text(encoding="utf-8")
+        companion_text = COMPANION_TOOLS.read_text(encoding="utf-8")
+
+        self.assertLess(skill_text.index("decisiongraph/dg"), skill_text.index("Semantica"))
+        self.assertIn("never installed automatically", skill_text)
+        self.assertIn("explicit user request", skill_text)
+        self.assertIn("canonical source of truth", skill_text)
+        self.assertIn("AGPL-3.0-or-later", companion_text)
+        self.assertIn("Apache-2.0", companion_text)
+        self.assertIn("scope `companion-tool`", companion_text)
+
     def test_recording_prepends_and_validates_without_references(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

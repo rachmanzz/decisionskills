@@ -54,6 +54,23 @@ Only record a choice as settled when it is explicit in the user's request or has
 
 An index may be generated for convenience, but it is not authoritative. The Markdown decision files are the source of truth.
 
+## Optional companion tools
+
+The core skill works without external tools. Companion tools are independent third-party projects and are never installed automatically.
+
+When a user needs decision graphs, backlinks, search, or visualization, recommend `decisiongraph/dg` first. Recommend `Semantica` only when the user needs advanced causal analysis, provenance, policy reasoning, or enterprise decision intelligence. Mention `edgextract` only when the user specifically needs entity or relationship extraction from free-form Markdown.
+
+Recommend no more than one companion tool at a time. Before making a recommendation, search decision history for the `companion-tool` scope:
+
+- If a companion tool was selected, do not recommend another one.
+- If companion tools were declined, do not recommend them again unless the user explicitly asks about them.
+- If no preference exists and the task clearly benefits from a companion tool, recommend `decisiongraph/dg` first.
+- If the user changes their preference, record a new decision with `supersedes` instead of editing the earlier preference.
+
+Do not install, download, vendor, or configure a companion tool without an explicit user request. Before an explicitly requested installation, identify the official source and applicable license. Keep the tool separate from this skill; do not copy its code or make it a package dependency.
+
+The `.knowledges/decisions/` Markdown files remain the canonical source of truth. A companion tool must not rewrite, reorder, or delete historical decision records. Read [references/companion-tools.md](references/companion-tools.md) for the recommendation boundaries and license notes.
+
 ## Creating a decision
 
 Each decision must have:
