@@ -6,18 +6,21 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-from validate_decisions import decision_files, extract_records
+from validate_decisions import scan_history
 
 
 def timestamp(record: object) -> datetime:
     value = getattr(record, "fields").get("decided_at", "")
     try:
-        return datetime.fromisoformat(str(value))
+        parsed = datetime.fromisoformat(str(value))
     except ValueError:
-        return datetime.min
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,6 +30,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scope", help="exact scope filter")
     parser.add_argument("--tag", action="append", default=[], help="tag filter; repeat to require multiple tags")
     parser.add_argument("--include-superseded", action="store_true")
+    parser.add_argument(
+        "--include-unverified-legacy",
+        action="store_true",
+        help="allow older unhashed YAML blocks for historical inspection; label them unverified",
+    )
     parser.add_argument("--limit", type=int, help="maximum number of results")
     parser.add_argument("--verbose", action="store_true", help="show legacy-format warnings")
     parser.add_argument("--json", action="store_true", dest="as_json")
@@ -36,23 +44,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     root = Path(args.root).resolve()
-    decision_root = root / ".knowledges" / "decisions"
-    records = []
-    errors = []
-    warnings = []
-    for path in decision_files(decision_root):
-        found, file_errors, file_warnings = extract_records(path)
-        records.extend(found)
-        errors.extend(file_errors)
-        warnings.extend(file_warnings)
-    for error in errors:
+    validation_errors, warnings, records = scan_history(
+        root, require_integrity=True, allow_unhashed_legacy=args.include_unverified_legacy
+    )
+    for error in validation_errors:
         print(f"error: {error}", file=sys.stderr)
-    if errors:
+    if validation_errors:
         return 1
-    if args.verbose:
+    if args.verbose or args.include_unverified_legacy:
         for warning in warnings:
             print(f"warning: {warning}", file=sys.stderr)
-
     superseded = set()
     for record in records:
         values = record.fields.get("supersedes", [])
@@ -90,6 +91,7 @@ def main() -> int:
                     "path": str(record.path),
                     "format": record.format,
                     "status": "superseded" if fields.get("id") in superseded else "active",
+                    "integrity": "verified" if fields.get("integrity_sha256") else "unverified",
                 }
             )
             output.append(fields)
@@ -103,8 +105,9 @@ def main() -> int:
         fields = record.fields
         decision_id = fields.get("id", "unknown")
         status = "superseded" if decision_id in superseded else "active"
+        integrity = "" if fields.get("integrity_sha256") else " [unverified]"
         print(
-            f"{decision_id} [{status}] {fields.get('decided_at', 'unknown')} "
+            f"{decision_id} [{status}]{integrity} {fields.get('decided_at', 'unknown')} "
             f"| {fields.get('scope', 'unknown')} | {fields.get('title', 'untitled')} | {record.path}"
         )
     return 0

@@ -28,6 +28,8 @@ agy plugin install https://github.com/rachmanzz/decisionskills
 
 The repository includes a root `plugin.json` for AGY. The AGY plugin manifest only packages this skill; it does not install or bundle any optional companion graph tool. AGY also receives the safety rule in `rules/decision-history-safety.md`, which forbids deleting or rewriting decision history.
 
+When using an installed copy, run helper scripts from the directory containing its `SKILL.md`, not from a presumed `skills/decision-history/` path in the consuming project. The project remains the `--root` argument. The repository-relative commands in the Local development section below are for this source checkout.
+
 ## What it does
 
 The skill teaches an AI agent to:
@@ -55,7 +57,7 @@ The default mode uses one file per month. Date-level files are available when a 
 
 New decisions are inserted at the top of the selected month or date file. Existing decision blocks are never edited, reordered, or deleted. A changed decision is represented by a new block using `supersedes`.
 
-New decision blocks use Markdown-only metadata. The `### Decision` section is required and must state exactly what was decided. References are optional and should only be added when supporting evidence or detailed context is needed. `--ref` accepts existing local files relative to `.knowledges/decisions/`; external URLs belong in `--source` or a local `ref/` document.
+New decision blocks use Markdown-only metadata. The `### Decision` section is required and must state exactly what was decided. References are optional and should only be added when supporting evidence or detailed context is needed. `--ref` accepts existing Markdown files under `.knowledges/decisions/ref/`; absolute paths, traversal, URI values, period files, and symlink escapes are rejected. External URLs belong in `--source` or a local `ref/` document.
 
 Detailed evidence, transcripts, diagrams, or research notes can be stored as separate Markdown files under `ref/` and linked from the decision block. Create the file first, then pass its path relative to `.knowledges/decisions/` with `--ref`. A reference should identify the decision, source, retrieval time, context, and evidence. Use `--source` for a simple external URL; do not put web URLs directly in `--ref`.
 
@@ -80,7 +82,17 @@ Relevant facts and observations.
 
 Reference files are historical records. Do not edit or delete an existing reference; create a new reference and decision with `supersedes` when the evidence changes.
 
-The recorder serializes helper writers for the same history file on the current host and replaces the file atomically after flushing it. This protects concurrent recorder processes from lost updates. Manual editors and writers that do not use the recorder are outside this guarantee.
+Evidence workflow:
+
+1. Discover source material without writing files.
+2. Add argumentation: relevance, interpretation, limitations, and conflicts.
+3. Decide whether the evidence is temporary or should be saved as a `ref`.
+4. If saved, create the Markdown reference first and link it with `--ref` when recording the decision.
+5. Validate and report errors without deleting or rewriting history.
+
+This applies both with and without a repository. With GitHub, provide `repo`, `path`, and section IDs to the helper. Without GitHub, use a provided URL, local file, pasted material, or conversation context. Searching or analyzing evidence alone does not authorize creating a `ref` or appending a decision.
+
+The recorder serializes helper writers for the same project on the current host, including writers targeting different period files, and replaces the file atomically after flushing it. This protects concurrent recorder processes from duplicate IDs and lost updates. Manual editors and writers that do not use the recorder are outside this guarantee.
 
 ## Decision block example
 
@@ -92,9 +104,10 @@ The recorder serializes helper writers for the same history file on the current 
 - Decided at: `2026-10-28T15:30:00+07:00`
 - Scope: `database`
 - Tags: `architecture`, `data`
-- Supersedes: `none`
-- Related: `none`
-- References: `none`
+- Supersedes: none
+- Related: none
+- References: none
+- Reference SHA256: none
 - Source: `conversation`
 - Integrity SHA256: `...`
 
@@ -128,19 +141,53 @@ Validate decision files and their links:
 ```bash
 python3 skills/decision-history/scripts/validate_decisions.py \
   --root . \
-  --require-integrity
+  --require-integrity \
+  --require-history \
+  --against-git-ref HEAD
 ```
 
-Validation errors are report-only diagnostics. Do not delete or rewrite the decision that caused an error; preserve it and append a correction with `supersedes` if needed.
+Use a trusted revision that predates the changes being checked. The baseline check detects edits or removals from tracked decision and reference files while allowing valid new blocks at the top of tracked period files. `--require-history` fails if no decision files exist; omit it for a new project with no recorded decisions yet. Current files alone cannot prove that the newest block was not deleted before the trusted baseline was established.
+
+Validation errors are report-only diagnostics. Do not delete or rewrite the decision that caused an error; preserve it and append a correction with `supersedes` if the old ID is parseable. If not, cite the failing file and block in the new decision. A correction documents new intent but does not make the old invalid record pass strict validation; continue reporting that error.
+
+Find a section in a public GitHub Markdown file without using a browser. The path must end in `.md`:
+
+```bash
+python3 skills/decision-history/scripts/find_github_reference.py \
+  --root . \
+  --repo rachmanzz/gosuite \
+  --path v3/worker/README.md \
+  --id 22-writing-modular-tasks-in-appeventsworkers
+```
+
+Repeat `--id` for multiple sections. Add `--exclude benchmarks` to omit a nested section, or `--git-ref <branch|tag|commit>` to read from a revision other than `main`. Add `--decision-id DEC-YYYYMMDD-HHMMSS` (or `--output ref/custom.md`) to save the extracted content as a new local Markdown reference snapshot and receive the path for `record_decision.py --ref`. The helper uses `raw.githubusercontent.com`, does not overwrite existing snapshots, and accepts `GITHUB_TOKEN` for private repositories.
+
+When no section ID is provided, use a read-only discovery mode:
+
+```bash
+python3 skills/decision-history/scripts/find_github_reference.py \
+  --repo rachmanzz/gosuite \
+  --path v3/worker/README.md \
+  --list-headings
+
+python3 skills/decision-history/scripts/find_github_reference.py \
+  --repo rachmanzz/gosuite \
+  --path v3/worker/README.md \
+  --all
+```
+
+`--list-headings` shows section IDs. `--all` prints the complete Markdown content once. Both modes reject persistence flags and do not create refs or decisions.
 
 The validator checks:
 
 - required metadata and ISO 8601 timestamps;
 - newest-first ordering within each period file;
 - duplicate IDs and broken decision links;
-- `supersedes` cycles;
+- `supersedes` cycles and replacements dated earlier than the decisions they replace;
 - reference paths;
-- integrity hashes that detect edits to existing blocks.
+- integrity hashes for linked reference files;
+- integrity hashes that detect edits to existing blocks;
+- an optional trusted Git baseline to detect edits or removals from tracked history.
 
 Search decisions before taking a consequential step:
 
@@ -151,7 +198,7 @@ python3 skills/decision-history/scripts/list_decisions.py \
   --query PostgreSQL
 ```
 
-The search helper hides superseded decisions by default. Use `--include-superseded` for historical review or `--json` for automation.
+The search helper requires valid integrity hashes and hides superseded decisions by default. It reports an error instead of showing unverified history. Use `--include-superseded` for historical review or `--json` for automation. To inspect older unhashed YAML records explicitly, add `--include-unverified-legacy`; results and warnings mark them unverified. This does not relax checks for modern Markdown blocks or mismatched hashes, and unverified history should not be treated as authenticated evidence.
 
 Inspect older YAML records without changing history:
 
@@ -198,7 +245,8 @@ skills/decision-history/
     ├── list_decisions.py
     ├── migrate_decisions.py
     ├── record_decision.py
-    └── validate_decisions.py
+    ├── validate_decisions.py
+    └── find_github_reference.py
 ```
 
 The repository root also contains `plugin.json` for AGY plugin discovery and `rules/decision-history-safety.md` for AGY safety enforcement.

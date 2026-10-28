@@ -9,7 +9,15 @@ import re
 import sys
 from pathlib import Path
 
-from validate_decisions import END_MARKER, YAML_FENCE, Record, decision_files, extract_records
+from validate_decisions import (
+    END_MARKER,
+    YAML_FENCE,
+    Record,
+    check_decision_root,
+    decision_files,
+    extract_records,
+    resolve_decision_reference,
+)
 
 START_MARKER = "<!-- decision:start -->"
 
@@ -39,9 +47,20 @@ def legacy_body(record: Record) -> str:
     return body.strip()
 
 
-def render_markdown(record: Record) -> str:
+def render_markdown(record: Record, decision_root: Path) -> str:
     fields = record.fields
     title = str(fields.get("title", "Untitled decision"))
+    refs = fields.get("refs", [])
+    reference_hashes = []
+    if isinstance(refs, list):
+        for reference in refs:
+            try:
+                reference_path = resolve_decision_reference(decision_root, str(reference))
+            except ValueError:
+                continue
+            if reference_path.is_file():
+                digest = hashlib.sha256(reference_path.read_bytes()).hexdigest()
+                reference_hashes.append(f"{reference}={digest}")
     lines = [
         START_MARKER,
         f"## {title}",
@@ -52,7 +71,8 @@ def render_markdown(record: Record) -> str:
         f"- Tags: {list_value(fields.get('tags', []))}",
         f"- Supersedes: {list_value(fields.get('supersedes', []))}",
         f"- Related: {list_value(fields.get('related', []))}",
-        f"- References: {list_value(fields.get('refs', []))}",
+        f"- References: {list_value(refs)}",
+        f"- Reference SHA256: {list_value(reference_hashes)}",
         f"- Source: {list_value(fields.get('source', []))}",
         "- Integrity SHA256: ``",
         "",
@@ -79,10 +99,14 @@ def main() -> int:
     decision_root = root / ".knowledges" / "decisions"
     records: list[Record] = []
     errors = []
-    for path in decision_files(decision_root):
-        found, file_errors, _ = extract_records(path)
-        records.extend(record for record in found if record.format in ("yaml", "legacy"))
-        errors.extend(file_errors)
+    try:
+        check_decision_root(root)
+        for path in decision_files(decision_root):
+            found, file_errors, _ = extract_records(path)
+            records.extend(record for record in found if record.format in ("yaml", "legacy"))
+            errors.extend(file_errors)
+    except (OSError, UnicodeError, ValueError) as exc:
+        errors.append(str(exc))
     for error in errors:
         print(f"error: {error}", file=sys.stderr)
     if errors:
@@ -114,9 +138,14 @@ def main() -> int:
             "# Decision migration draft\n\n"
             "This file is a review artifact. It is not part of decision history "
             "until manually reviewed and deliberately added.\n\n"
-            + "\n".join(render_markdown(record) for record in records)
+            + "\n".join(render_markdown(record, decision_root) for record in records)
         )
-        output.write_text(content, encoding="utf-8")
+        try:
+            with output.open("x", encoding="utf-8") as draft:
+                draft.write(content)
+        except FileExistsError:
+            print(f"error: draft already exists: {output}", file=sys.stderr)
+            return 1
         print(f"Wrote review draft: {output}")
     return 0
 
