@@ -9,7 +9,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PROJECT_ROOT / "skills" / "decision-history" / "scripts"
 RECORD = SCRIPTS / "record_decision.py"

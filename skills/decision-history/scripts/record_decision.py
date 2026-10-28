@@ -13,12 +13,15 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
+fcntl: Any = None
 try:
-    import fcntl
+    import fcntl as _fcntl
 except ImportError:  # pragma: no cover - exercised only on non-POSIX hosts
-    fcntl = None
+    pass
+else:
+    fcntl = _fcntl
 
 
 ID_PATTERN = re.compile(r"^DEC-\d{8}-\d{6}(?:-\d{2})?$")
@@ -224,7 +227,8 @@ def main() -> int:
             existing = path.read_text(encoding="utf-8") if path.exists() else ""
             if existing.strip() and START_MARKER not in existing:
                 raise ValueError(
-                    f"period file exists in legacy format: {path}; preserve it and choose a new period file or migrate it manually"
+                    f"period file exists in legacy format: {path}; preserve it and choose a new period file "
+                    "or migrate it manually"
                 )
             combined = build_entry(args, decision_id, timestamp) + (
                 "\n" + existing.lstrip("\n") if existing.strip() else ""

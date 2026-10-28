@@ -9,8 +9,7 @@ import re
 import sys
 from pathlib import Path
 
-from validate_decisions import END_MARKER, YAML_FENCE, decision_files, extract_records
-
+from validate_decisions import END_MARKER, YAML_FENCE, Record, decision_files, extract_records
 
 START_MARKER = "<!-- decision:start -->"
 
@@ -25,9 +24,9 @@ def list_value(values: object) -> str:
     return ", ".join(inline(str(value)) for value in values)
 
 
-def legacy_body(record: object) -> str:
-    raw = getattr(record, "raw")
-    block_format = getattr(record, "format")
+def legacy_body(record: Record) -> str:
+    raw = record.raw
+    block_format = record.format
     if block_format == "yaml":
         match = YAML_FENCE.search(raw)
         body = raw[match.end():] if match else ""
@@ -40,8 +39,8 @@ def legacy_body(record: object) -> str:
     return body.strip()
 
 
-def render_markdown(record: object) -> str:
-    fields = getattr(record, "fields")
+def render_markdown(record: Record) -> str:
+    fields = record.fields
     title = str(fields.get("title", "Untitled decision"))
     lines = [
         START_MARKER,
@@ -78,7 +77,7 @@ def main() -> int:
     args = build_parser().parse_args()
     root = Path(args.root).resolve()
     decision_root = root / ".knowledges" / "decisions"
-    records = []
+    records: list[Record] = []
     errors = []
     for path in decision_files(decision_root):
         found, file_errors, _ = extract_records(path)

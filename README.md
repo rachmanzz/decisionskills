@@ -2,7 +2,7 @@
 
 An installable agent skill for preserving project decisions as timestamped, traceable, append-only Markdown history.
 
-Current release: `v0.1.1`
+Current release: `v0.1.2`
 
 Decision History helps AI agents and teams understand why a project reached its current state and use that context before taking consequential steps.
 
@@ -139,6 +139,14 @@ Run the automated test suite:
 python3 -m unittest discover -s tests -v
 ```
 
+Run the development checks used by CI:
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+ruff check skills/decision-history/scripts tests
+mypy skills/decision-history/scripts tests
+```
+
 Validate the skill package itself with the `skill-creator` validator:
 
 ```bash
@@ -165,3 +173,7 @@ The installed skill provides the workflow. Each consuming project owns its own `
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting instructions.

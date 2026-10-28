@@ -13,7 +13,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-
 ID_PATTERN = re.compile(r"^DEC-\d{8}-\d{6}(?:-\d{2})?$")
 YAML_HASH_PATTERN = re.compile(r"^integrity_sha256:\s*.*$", re.MULTILINE)
 MARKDOWN_HASH_PATTERN = re.compile(r"^- Integrity SHA256:\s*.*$", re.MULTILINE)
