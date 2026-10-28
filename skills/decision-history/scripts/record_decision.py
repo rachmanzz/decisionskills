@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Prepend a new decision block to a month or date history file."""
+"""Prepend a new Markdown-only decision block to a month or date history file."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import re
 import sys
 from datetime import datetime
@@ -13,16 +12,18 @@ from pathlib import Path
 
 
 ID_PATTERN = re.compile(r"^DEC-\d{8}-\d{6}(?:-\d{2})?$")
-ID_SCAN_PATTERN = re.compile(r"^\s*id:\s*[\"']?(DEC-\d{8}-\d{6}(?:-\d{2})?)[\"']?\s*$", re.MULTILINE)
+ID_SCAN_PATTERN = re.compile(r"DEC-\d{8}-\d{6}(?:-\d{2})?")
 START_MARKER = "<!-- decision:start -->"
 
 
-def yaml_string(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)
+def inline(value: str) -> str:
+    return f"`{value}`"
 
 
-def yaml_array(values: list[str]) -> str:
-    return json.dumps(values, ensure_ascii=False)
+def list_value(values: list[str]) -> str:
+    if not values:
+        return "none"
+    return ", ".join(inline(value) for value in values)
 
 
 def parse_timestamp(value: str | None) -> datetime:
@@ -69,27 +70,19 @@ def choose_id(timestamp: datetime, decision_root: Path, requested: str | None) -
 def build_entry(args: argparse.Namespace, decision_id: str, timestamp: datetime) -> str:
     title = args.title.strip()
     sources = args.source or ["conversation"]
-    metadata = "\n".join(
-        [
-            f"id: {yaml_string(decision_id)}",
-            f"title: {yaml_string(title)}",
-            f"decided_at: {yaml_string(timestamp.isoformat())}",
-            f"scope: {yaml_string(args.scope)}",
-            f"tags: {yaml_array(args.tag)}",
-            f"supersedes: {yaml_array(args.supersedes)}",
-            f"related: {yaml_array(args.related)}",
-            f"refs: {yaml_array(args.ref)}",
-            f"source: {yaml_array(sources)}",
-            'integrity_sha256: ""',
-        ]
-    )
     lines = [
-        "<!-- decision:start -->",
+        START_MARKER,
         f"## {title}",
         "",
-        "```yaml",
-        metadata,
-        "```",
+        f"- ID: {inline(decision_id)}",
+        f"- Decided at: {inline(timestamp.isoformat())}",
+        f"- Scope: {inline(args.scope)}",
+        f"- Tags: {list_value(args.tag)}",
+        f"- Supersedes: {list_value(args.supersedes)}",
+        f"- Related: {list_value(args.related)}",
+        f"- References: {list_value(args.ref)}",
+        f"- Source: {list_value(sources)}",
+        "- Integrity SHA256: ``",
         "",
         "### Decision",
         "",
@@ -107,7 +100,7 @@ def build_entry(args: argparse.Namespace, decision_id: str, timestamp: datetime)
     lines += ["<!-- decision:end -->", ""]
     entry = "\n".join(lines)
     digest = hashlib.sha256(entry.encode("utf-8")).hexdigest()
-    return entry.replace('integrity_sha256: ""', f'integrity_sha256: "{digest}"', 1)
+    return entry.replace("- Integrity SHA256: ``", f"- Integrity SHA256: `{digest}`", 1)
 
 
 def prepend_entry(path: Path, entry: str) -> None:
@@ -130,7 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", default=".", help="project root; defaults to the current directory")
     parser.add_argument("--period", choices=("month", "date"), default="month")
     parser.add_argument("--title", required=True)
-    parser.add_argument("--decision", required=True)
+    parser.add_argument("--decision", required=True, help="clear, settled decision statement")
     parser.add_argument("--rationale")
     parser.add_argument("--consequence", action="append", default=[])
     parser.add_argument("--agent-action")
@@ -148,6 +141,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     try:
+        if not args.decision.strip():
+            raise ValueError("decision must not be empty")
         timestamp = parse_timestamp(args.timestamp)
         project_root = Path(args.root).resolve()
         decision_root = project_root / ".knowledges" / "decisions"

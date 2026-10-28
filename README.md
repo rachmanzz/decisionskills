@@ -45,34 +45,33 @@ The default mode uses one file per month. Date-level files are available when a 
 
 New decisions are inserted at the top of the selected month or date file. Existing decision blocks are never edited, reordered, or deleted. A changed decision is represented by a new block using `supersedes`.
 
+New decision blocks use Markdown-only metadata. The `### Decision` section is required and must state exactly what was decided. References are optional and should only be added when supporting evidence or detailed context is needed.
+
 Detailed evidence, transcripts, diagrams, or research notes can be stored as separate files under `ref/` and linked from the decision block.
 
 ## Decision block example
 
 ````markdown
 <!-- decision:start -->
-## Use Markdown decision records
+## Use PostgreSQL as the primary database
 
-```yaml
-id: "DEC-20261028-153000"
-title: "Use Markdown decision records"
-decided_at: "2026-10-28T15:30:00+07:00"
-scope: "project"
-tags: ["architecture", "history"]
-supersedes: []
-related: []
-refs: []
-source: ["conversation"]
-integrity_sha256: "..."
-```
+- ID: `DEC-20261028-153000`
+- Decided at: `2026-10-28T15:30:00+07:00`
+- Scope: `database`
+- Tags: `architecture`, `data`
+- Supersedes: `none`
+- Related: `none`
+- References: `none`
+- Source: `conversation`
+- Integrity SHA256: `...`
 
 ### Decision
 
-Store project decisions as Markdown files.
+Use PostgreSQL as the primary database for this project.
 
 ### Rationale
 
-Markdown is readable by humans, agents, and version-control tools.
+PostgreSQL provides the required relational features and transaction guarantees.
 
 <!-- decision:end -->
 ````

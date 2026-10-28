@@ -61,12 +61,17 @@ Each decision must have:
 - a unique ID;
 - a `decided_at` timestamp in ISO 8601 format with timezone;
 - a concise title;
+- a clear `scope`;
 - the decision itself;
 - rationale and consequences when they are known;
 - scope, tags, and source information when useful;
 - links to superseded or related decisions when applicable.
 
 Use the provided `scripts/record_decision.py` helper when available. It prepends a new decision block to the selected month or date file without changing existing blocks. Run `scripts/validate_decisions.py` after adding or importing records.
+
+New decision blocks use Markdown-only metadata. The `### Decision` section is mandatory and must state the settled decision clearly and directly. A title is not a substitute for the decision statement.
+
+References are optional. Create a file under `ref/` only when the decision needs supporting evidence or detailed context; do not create empty reference files and do not make the decision depend on them.
 
 Read [references/decision-schema.md](references/decision-schema.md) for the complete format and examples.
 

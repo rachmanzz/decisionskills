@@ -15,10 +15,26 @@ from typing import Any
 
 
 ID_PATTERN = re.compile(r"^DEC-\d{8}-\d{6}(?:-\d{2})?$")
-HASH_PATTERN = re.compile(r"^integrity_sha256:\s*.*$", re.MULTILINE)
+YAML_HASH_PATTERN = re.compile(r"^integrity_sha256:\s*.*$", re.MULTILINE)
+MARKDOWN_HASH_PATTERN = re.compile(r"^- Integrity SHA256:\s*.*$", re.MULTILINE)
 START_MARKER = "<!-- decision:start -->"
 END_MARKER = "<!-- decision:end -->"
 YAML_FENCE = re.compile(r"```yaml\r?\n(.*?)\r?\n```", re.DOTALL)
+MARKDOWN_FIELD = re.compile(
+    r"^-[ \t]+(ID|Decided at|Scope|Tags|Supersedes|Related|References|Source|Integrity SHA256):[ \t]*(.*)$",
+    re.MULTILINE,
+)
+FIELD_NAMES = {
+    "ID": "id",
+    "Decided at": "decided_at",
+    "Scope": "scope",
+    "Tags": "tags",
+    "Supersedes": "supersedes",
+    "Related": "related",
+    "References": "refs",
+    "Source": "source",
+    "Integrity SHA256": "integrity_sha256",
+}
 
 
 @dataclass
@@ -26,7 +42,26 @@ class Record:
     path: Path
     fields: dict[str, Any]
     raw: str
-    period_block: bool
+    format: str
+
+
+def clean_inline(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == "`" and value[-1] == "`":
+        value = value[1:-1]
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value[1:-1]
+    return value
+
+
+def parse_list(value: str) -> list[str]:
+    value = value.strip()
+    if not value or value.lower() == "none":
+        return []
+    return [item for item in (clean_inline(part) for part in value.split(",")) if item]
 
 
 def scalar(value: str) -> Any:
@@ -46,7 +81,7 @@ def scalar(value: str) -> Any:
     return value
 
 
-def parse_metadata(text: str) -> tuple[dict[str, Any], list[str]]:
+def parse_yaml_metadata(text: str) -> tuple[dict[str, Any], list[str]]:
     lines = text.splitlines()
     errors: list[str] = []
     if not lines or lines[0].strip() != "---":
@@ -79,12 +114,27 @@ def parse_metadata(text: str) -> tuple[dict[str, Any], list[str]]:
     return fields, errors
 
 
-def parse_period_block(block: str) -> tuple[dict[str, Any], list[str]]:
+def parse_markdown_metadata(block: str) -> tuple[dict[str, Any], list[str]]:
+    heading = re.search(r"^##[ \t]+(.+?)\s*$", block, re.MULTILINE)
+    fields: dict[str, Any] = {"title": heading.group(1).strip()} if heading else {}
+    errors: list[str] = []
+    for match in MARKDOWN_FIELD.finditer(block):
+        label, raw_value = match.groups()
+        key = FIELD_NAMES[label]
+        if key in ("tags", "supersedes", "related", "refs", "source"):
+            fields[key] = parse_list(raw_value)
+        else:
+            fields[key] = clean_inline(raw_value)
+    return fields, errors
+
+
+def parse_period_block(block: str) -> tuple[dict[str, Any], list[str], str]:
     match = YAML_FENCE.search(block)
-    if not match:
-        return {}, ["missing yaml metadata fence"]
-    metadata, errors = parse_metadata(f"---\n{match.group(1)}\n---\n")
-    return metadata, errors
+    if match:
+        metadata, errors = parse_yaml_metadata(f"---\n{match.group(1)}\n---\n")
+        return metadata, errors, "yaml"
+    metadata, errors = parse_markdown_metadata(block)
+    return metadata, errors, "markdown"
 
 
 def extract_records(path: Path) -> tuple[list[Record], list[str], list[str]]:
@@ -94,10 +144,10 @@ def extract_records(path: Path) -> tuple[list[Record], list[str], list[str]]:
     warnings: list[str] = []
 
     if START_MARKER not in text:
-        metadata, parse_errors = parse_metadata(text)
+        metadata, parse_errors = parse_yaml_metadata(text)
         errors.extend(f"{path}: {problem}" for problem in parse_errors)
         if not parse_errors:
-            records.append(Record(path, metadata, text, False))
+            records.append(Record(path, metadata, text, "legacy"))
             warnings.append(f"{path}: legacy single-decision format; future records should use period blocks")
         return records, errors, warnings
 
@@ -114,10 +164,10 @@ def extract_records(path: Path) -> tuple[list[Record], list[str], list[str]]:
         if text.startswith("\n", block_end):
             block_end += 1
         block = text[start:block_end]
-        metadata, parse_errors = parse_period_block(block)
+        metadata, parse_errors, block_format = parse_period_block(block)
         errors.extend(f"{path}: {problem}" for problem in parse_errors)
         if not parse_errors:
-            records.append(Record(path, metadata, block, True))
+            records.append(Record(path, metadata, block, block_format))
         cursor = block_end
     if not records and not errors:
         errors.append(f"{path}: no decision blocks found")
@@ -135,7 +185,17 @@ def decision_files(decision_root: Path) -> list[Path]:
 
 
 def integrity_material(text: str) -> str:
-    return HASH_PATTERN.sub('integrity_sha256: ""', text, count=1)
+    text = YAML_HASH_PATTERN.sub('integrity_sha256: ""', text, count=1)
+    return MARKDOWN_HASH_PATTERN.sub("- Integrity SHA256: ``", text, count=1)
+
+
+def decision_content(record: Record) -> str:
+    match = re.search(r"^#{2,3}[ \t]+Decision\s*$", record.raw, re.MULTILINE)
+    if not match:
+        return ""
+    content = record.raw[match.end():]
+    content = re.split(r"^#{2,3}[ \t]+", content, maxsplit=1, flags=re.MULTILINE)[0]
+    return content.replace(END_MARKER, "").strip()
 
 
 def validate(root: Path, require_integrity: bool) -> tuple[list[str], list[str]]:
@@ -164,7 +224,7 @@ def validate(root: Path, require_integrity: bool) -> tuple[list[str], list[str]]
         else:
             by_id[decision_id] = record
 
-        for required in ("title", "decided_at"):
+        for required in ("title", "decided_at", "scope"):
             if not fields.get(required):
                 errors.append(f"{path}: missing required field {required}")
         timestamp = fields.get("decided_at")
@@ -176,6 +236,9 @@ def validate(root: Path, require_integrity: bool) -> tuple[list[str], list[str]]
             except ValueError:
                 errors.append(f"{path}: decided_at is not valid ISO 8601: {timestamp}")
 
+        if record.format != "legacy" and not decision_content(record):
+            errors.append(f"{path}: decision {decision_id} has an empty or missing Decision section")
+
         digest = fields.get("integrity_sha256")
         if digest:
             expected = hashlib.sha256(integrity_material(record.raw).encode("utf-8")).hexdigest()
@@ -186,7 +249,7 @@ def validate(root: Path, require_integrity: bool) -> tuple[list[str], list[str]]
         else:
             warnings.append(f"{path}: decision {decision_id} has no integrity_sha256")
 
-        for field in ("supersedes", "related", "refs", "source"):
+        for field in ("tags", "supersedes", "related", "refs", "source"):
             value = fields.get(field, [])
             if not isinstance(value, list):
                 errors.append(f"{path}: {field} must be a list")
