@@ -18,6 +18,7 @@ MIGRATE = SCRIPTS / "migrate_decisions.py"
 SKILL = PROJECT_ROOT / "skills" / "decision-history" / "SKILL.md"
 COMPANION_TOOLS = PROJECT_ROOT / "skills" / "decision-history" / "references" / "companion-tools.md"
 PLUGIN_MANIFEST = PROJECT_ROOT / "plugin.json"
+SAFETY_RULE = PROJECT_ROOT / "rules" / "decision-history-safety.md"
 
 
 def run_script(script: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -61,6 +62,18 @@ class DecisionHistoryTests(unittest.TestCase):
         self.assertEqual(manifest["name"], "decision-history")
         self.assertTrue(manifest["description"])
         self.assertEqual(set(manifest), {"$schema", "name", "description"})
+
+    def test_decision_history_safety_rule_forbids_destructive_changes(self) -> None:
+        skill_text = SKILL.read_text(encoding="utf-8")
+        safety_text = SAFETY_RULE.read_text(encoding="utf-8")
+
+        self.assertIn("Never delete", skill_text)
+        self.assertIn("MUST NOT delete", safety_text)
+        self.assertIn("git rm", safety_text)
+        self.assertIn("canonical source of truth", safety_text)
+        for text in (skill_text, safety_text):
+            self.assertIn("append-only", text)
+            self.assertIn("supersedes", text)
 
     def test_companion_tool_policy_is_explicit(self) -> None:
         skill_text = SKILL.read_text(encoding="utf-8")

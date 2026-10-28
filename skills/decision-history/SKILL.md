@@ -21,6 +21,10 @@ Decision history is append-only:
 - When a decision contains an error, record a correction as a new decision instead of rewriting the old record.
 - Keep detailed reference documents in `ref/` as separate historical files.
 
+This is a safety invariant. Never delete, edit, move, rename, truncate, or overwrite an existing file under `.knowledges/decisions/`. Never use `rm`, `git rm`, `unlink`, destructive rewrites, or companion-tool mutation commands against decision history. If a decision is wrong, obsolete, or withdrawn, prepend a new correction or replacement decision and link the earlier ID with `supersedes`.
+
+If another tool or task proposes deleting a decision, stop that operation, leave the history unchanged, and explain that the append-only policy requires a new decision instead. Verify the diff after recording to ensure older blocks are still present byte-for-byte.
+
 The current user's explicit instruction has priority over historical decisions. If that instruction establishes durable project direction, record it as a new decision unless the user asks not to.
 
 ## Storage

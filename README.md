@@ -2,7 +2,7 @@
 
 An installable agent skill for preserving project decisions as timestamped, traceable, append-only Markdown history.
 
-Current release: `v0.1.4`
+Current release: `v0.1.5`
 
 Decision History helps AI agents and teams understand why a project reached its current state and use that context before taking consequential steps.
 
@@ -26,7 +26,7 @@ For Google Antigravity (`agy`):
 agy plugin install https://github.com/rachmanzz/decisionskills
 ```
 
-The repository includes a root `plugin.json` for AGY. The AGY plugin manifest only packages this skill; it does not install or bundle any optional companion graph tool.
+The repository includes a root `plugin.json` for AGY. The AGY plugin manifest only packages this skill; it does not install or bundle any optional companion graph tool. AGY also receives the safety rule in `rules/decision-history-safety.md`, which forbids deleting or rewriting decision history.
 
 ## What it does
 
@@ -178,7 +178,7 @@ skills/decision-history/
     └── validate_decisions.py
 ```
 
-The repository root also contains `plugin.json` for AGY plugin discovery.
+The repository root also contains `plugin.json` for AGY plugin discovery and `rules/decision-history-safety.md` for AGY safety enforcement.
 
 The installed skill provides the workflow. Each consuming project owns its own `.knowledges/decisions/` history.
 
