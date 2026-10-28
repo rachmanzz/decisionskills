@@ -17,6 +17,7 @@ LIST = SCRIPTS / "list_decisions.py"
 MIGRATE = SCRIPTS / "migrate_decisions.py"
 SKILL = PROJECT_ROOT / "skills" / "decision-history" / "SKILL.md"
 COMPANION_TOOLS = PROJECT_ROOT / "skills" / "decision-history" / "references" / "companion-tools.md"
+PLUGIN_MANIFEST = PROJECT_ROOT / "plugin.json"
 
 
 def run_script(script: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -53,6 +54,14 @@ def record(root: Path, timestamp: str, title: str, decision: str, *extra: str) -
 
 
 class DecisionHistoryTests(unittest.TestCase):
+    def test_agy_plugin_manifest_is_valid(self) -> None:
+        manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["$schema"], "https://antigravity.google/schemas/v1/plugin.json")
+        self.assertEqual(manifest["name"], "decision-history")
+        self.assertTrue(manifest["description"])
+        self.assertEqual(set(manifest), {"$schema", "name", "description"})
+
     def test_companion_tool_policy_is_explicit(self) -> None:
         skill_text = SKILL.read_text(encoding="utf-8")
         companion_text = COMPANION_TOOLS.read_text(encoding="utf-8")

@@ -1,0 +1,5 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "decision-history",
+  "description": "Preserve and use project decisions as timestamped, traceable, append-only Markdown history."
+}
