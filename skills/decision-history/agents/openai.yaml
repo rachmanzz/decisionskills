@@ -1,0 +1,7 @@
+interface:
+  display_name: "Decision History"
+  short_description: "Preserve and use project decisions"
+  default_prompt: "Use $decision-history to record or apply a project decision."
+
+policy:
+  allow_implicit_invocation: true
