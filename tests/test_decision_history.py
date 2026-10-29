@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timedelta, timezone
 from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
@@ -1256,6 +1257,70 @@ Use option A.
             )
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("new history must use Markdown", result.stderr)
+
+    def test_baseline_validates_full_staged_history_not_only_its_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "Test"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.com"], check=True)
+            (root / "README.md").write_text("fixture\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "README.md"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "baseline"], check=True)
+
+            record(root, "2026-10-29T12:00:00+07:00", "Original", "Use option A.")
+            period = root / ".knowledges/decisions/2026-10.md"
+            valid = period.read_text(encoding="utf-8")
+            period.write_text(valid.replace("Use option A.", "Use option B."), encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", ".knowledges/decisions"], check=True)
+            period.write_text(valid, encoding="utf-8")
+
+            result = run_script(
+                VALIDATE, "--root", str(root), "--require-integrity", "--against-git-ref", "HEAD", check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("staged", result.stderr)
+            self.assertIn("integrity_sha256 does not match", result.stderr)
+
+    def test_long_supersession_chain_does_not_overflow_recursion(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            period = root / ".knowledges/decisions/2026-10.md"
+            period.parent.mkdir(parents=True)
+            start = datetime(2026, 10, 29, 12, 0, tzinfo=timezone(timedelta(hours=7)))
+            blocks = []
+            for index in range(1050):
+                at = start + timedelta(seconds=index)
+                decision_id = f"DEC-{at:%Y%m%d-%H%M%S}"
+                parent_at = at - timedelta(seconds=1)
+                parent = f"DEC-{parent_at:%Y%m%d-%H%M%S}"
+                block = "\n".join([
+                    "<!-- decision:start -->", f"## Decision {index}", "",
+                    f"- ID: `{decision_id}`", f"- Decided at: `{at.isoformat()}`",
+                    "- Scope: `project`", "- Tags: none",
+                    f"- Supersedes: `{parent}`" if index else "- Supersedes: none",
+                    "- Related: none", "- References: none", "- Reference SHA256: none",
+                    "- Source: `conversation`", "- Integrity SHA256: ``", "",
+                    "### Decision", "", "Use this choice.", "", "<!-- decision:end -->", "",
+                ])
+                digest = hashlib.sha256(block.encode("utf-8")).hexdigest()
+                blocks.append(block.replace("- Integrity SHA256: ``", f"- Integrity SHA256: `{digest}`"))
+            period.write_text("\n".join(reversed(blocks)), encoding="utf-8")
+            result = run_script(VALIDATE, "--root", str(root), "--require-integrity", check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
+            latest_at = start + timedelta(seconds=len(blocks) - 1)
+            latest_id = f"DEC-{latest_at:%Y%m%d-%H%M%S}"
+            first = blocks[0].replace("- Supersedes: none", f"- Supersedes: `{latest_id}`")
+            first = re.sub(r"^- Integrity SHA256:.*$", "- Integrity SHA256: ``", first, flags=re.MULTILINE)
+            digest = hashlib.sha256(first.encode("utf-8")).hexdigest()
+            blocks[0] = first.replace("- Integrity SHA256: ``", f"- Integrity SHA256: `{digest}`")
+            period.write_text("\n".join(reversed(blocks)), encoding="utf-8")
+            cyclic = run_script(VALIDATE, "--root", str(root), "--require-integrity", check=False)
+            self.assertNotEqual(cyclic.returncode, 0)
+            self.assertIn("supersedes cycle detected", cyclic.stderr)
+            self.assertNotIn("Traceback", cyclic.stderr)
 
     def test_backticked_none_and_hash_in_title_or_body_validate_cleanly(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

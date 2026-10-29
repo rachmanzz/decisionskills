@@ -10,6 +10,7 @@ import re
 import stat
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -556,23 +557,27 @@ def scan_history(
             [item for item in values if isinstance(item, str) and item in by_id]
             if isinstance(values, list) else []
         )
-    visiting: set[str] = set()
     visited: set[str] = set()
-
-    def visit(node: str, trail: list[str]) -> None:
-        if node in visiting:
-            errors.append(f"supersedes cycle detected: {' -> '.join(trail + [node])}")
-            return
-        if node in visited:
-            return
-        visiting.add(node)
-        for parent in graph[node]:
-            visit(parent, trail + [node])
-        visiting.remove(node)
-        visited.add(node)
-
     for decision_id in graph:
-        visit(decision_id, [])
+        if decision_id in visited:
+            continue
+        visiting = {decision_id}
+        trail = [decision_id]
+        stack = [(decision_id, iter(graph[decision_id]))]
+        while stack:
+            node, parents = stack[-1]
+            parent = next(parents, None)
+            if parent is None:
+                stack.pop()
+                trail.pop()
+                visiting.remove(node)
+                visited.add(node)
+            elif parent in visiting:
+                errors.append(f"supersedes cycle detected: {' -> '.join(trail + [parent])}")
+            elif parent not in visited:
+                visiting.add(parent)
+                trail.append(parent)
+                stack.append((parent, iter(graph[parent])))
     return errors, warnings, records
 
 
@@ -586,7 +591,7 @@ def validate(
     return errors, warnings
 
 
-def validate_git_baseline(root: Path, baseline_ref: str) -> list[str]:
+def validate_git_baseline(root: Path, baseline_ref: str, require_integrity: bool = False) -> list[str]:
     """Compare baseline, index, and worktree without trusting symlink contents."""
 
     cleaned_ref = baseline_ref.strip()
@@ -728,6 +733,26 @@ def validate_git_baseline(root: Path, baseline_ref: str) -> list[str]:
                     errors.append(f"could not read new decision history file {relative_name}: {exc}")
     except ValueError as exc:
         errors.append(str(exc))
+
+    # The worktree can be valid while the index contains different bytes. Validate
+    # the complete staged snapshot so a malformed decision cannot be committed
+    # after a successful local check.
+    if index:
+        with tempfile.TemporaryDirectory(prefix="decision-history-index-") as temporary:
+            staged_root = Path(temporary)
+            for relative_name, (staged_mode, staged_hash) in index.items():
+                if staged_mode not in {"100644", "100755"}:
+                    errors.append(f"staged decision history file is not regular: {relative_name}")
+                    continue
+                target = staged_root / relative_name
+                try:
+                    target.resolve().relative_to(staged_root)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(git_blob(staged_hash))
+                except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+                    errors.append(f"could not inspect staged decision history file {relative_name}: {exc}")
+            staged_errors, _, _ = scan_history(staged_root, require_integrity=require_integrity)
+            errors.extend(f"staged {error}" for error in staged_errors)
     return errors
 
 
@@ -744,7 +769,7 @@ def main() -> int:
     root = Path(args.root).resolve()
     errors, warnings = validate(root, args.require_integrity, args.require_history)
     if args.against_git_ref:
-        errors.extend(validate_git_baseline(root, args.against_git_ref))
+        errors.extend(validate_git_baseline(root, args.against_git_ref, require_integrity=args.require_integrity))
     for warning in warnings:
         print(f"warning: {warning}")
     for error in errors:

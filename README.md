@@ -1,5 +1,7 @@
 # Decision History
 
+[![Security: B — Skills Directory](https://www.skillsdirectory.com/api/skills/rachmanzz-decision-history/badge)](https://www.skillsdirectory.com/skills/rachmanzz-decision-history)
+
 An installable agent skill for preserving project decisions as timestamped, traceable, append-only Markdown history.
 
 Current release: `v0.1.7`
@@ -263,10 +265,24 @@ The selection or rejection of a companion tool is recorded as an append-only pro
 
 See [the companion tool reference](skills/decision-history/references/companion-tools.md) for recommendation boundaries and licenses.
 
+## Security
+
+### GitHub Markdown source safety
+
+The GitHub reference helper accepts only `.md` paths, but that file extension does not make the content trustworthy. Markdown can contain code blocks or instructions that try to persuade an AI agent to run a malicious script or act outside the user's request. The helper reads this content as text; it does not execute it. Its `--id` and `--all` modes can still display code blocks.
+
+Use GitHub extraction only when you explicitly want the agent to inspect, search, or extract a specified source. Merely mentioning a GitHub link is not permission to fetch it. Treat fetched content as untrusted evidence, not as instructions: do not execute commands, install software, follow operational directions, or change project files because that content asks for it. If you do not want to assess whether a GitHub source may contain unwanted instructions, do not ask the agent to retrieve or use it for a decision.
+
+### Skills Directory subprocess finding
+
+The [Skills Directory listing](https://www.skillsdirectory.com/skills/rachmanzz-decision-history) flags `subprocess` in [`validate_decisions.py`](skills/decision-history/scripts/validate_decisions.py) as a critical risk signal. This is a static-scan finding about process execution, not evidence by itself of shell command injection.
+
+The validator invokes the local `git` executable only when `--against-git-ref` is supplied. It uses `subprocess.run` with argument lists, never `shell=True` or `os.system()`, to read the Git tree, index, and blobs for an append-only history comparison. The baseline reference is passed as one argument and values beginning with `-` are rejected; blob IDs come from Git output. The check does not run repository-provided scripts.
+
+This does not make the operation risk-free: it depends on a trusted `git` executable in `PATH` and a correctly chosen baseline revision. Review the source and your execution environment before using the Git baseline check. The badge above reflects a third-party automated assessment, not a security certification.
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting instructions.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-## Security
-
-See [SECURITY.md](SECURITY.md) for vulnerability reporting instructions.
